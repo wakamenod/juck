@@ -1,0 +1,33 @@
+name: juck test CI
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.21
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Set up cargo-make
+        uses: davidB/rust-cargo-make@v1
+        with:
+          version: "0.35.13"
+
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Test
+        run: |
+          cargo make test-github

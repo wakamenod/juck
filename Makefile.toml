@@ -1,0 +1,24 @@
+[config]
+skip_core_tasks = true
+
+[tasks.format]
+script = "go fmt ./..."
+
+[tasks.lint]
+script = "golangci-lint run --tests  ./..."
+
+[tasks.test]
+dependencies = ["format", "lint"]
+script = """
+#!/usr/bin/env bash
+set -o pipefail
+go test -count=1 -p=1 -cover -coverprofile=cover.out ./... -json | tparse -smallscreen $2
+"""
+
+[tasks.test-github]
+dependencies = ["format"]
+script = """
+#!/usr/bin/env bash
+set -o pipefail
+go test -count=1 -p=1 -cover -coverprofile=cover.out ./... -json
+"""
