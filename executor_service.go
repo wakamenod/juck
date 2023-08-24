@@ -11,6 +11,7 @@ type ExecutorService interface {
 	SubmitWithAny(task func(), result any) *Future[any]
 	SubmitWithString(task func(), result string) *Future[string]
 	SubmitWithInt(task func(), result int) *Future[int]
+	submit(task func() any) *ft
 }
 
 type ThreadPoolExecutor struct {
