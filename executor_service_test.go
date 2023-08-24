@@ -14,5 +14,5 @@ func TestSubmitInt(t *testing.T) {
 	})
 	pool.Shutdown()
 
-	AssertWithinDuration[int](t, time.Millisecond*1000, future, 42)
+	AssertEqualWithin[int](t, time.Millisecond*1000, future, 42)
 }
