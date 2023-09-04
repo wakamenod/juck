@@ -1,6 +1,9 @@
 package juck
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 type ExecutorService interface {
 	Shutdown()
@@ -15,13 +18,15 @@ type ExecutorService interface {
 }
 
 type ThreadPoolExecutor struct {
-	tasks chan func()
-	wg    sync.WaitGroup
+	taskQueue    chan func()
+	workerNumber int
+	wg           sync.WaitGroup
 }
 
 func newThreadPoolExecutor(maxGoroutines int) ExecutorService {
 	p := &ThreadPoolExecutor{
-		tasks: make(chan func()),
+		taskQueue:    make(chan func()),
+		workerNumber: maxGoroutines,
 	}
 
 	for i := 0; i < maxGoroutines; i++ {
@@ -39,14 +44,20 @@ func (p *ThreadPoolExecutor) worker() {
 }
 
 func (p *ThreadPoolExecutor) submit(task func() any) *ft {
+	fmt.Println("@@@@@@@@@@@ submit")
+
 	resultChan := make(chan any)
 	wrappedTask := func() {
 		res := task()
+		fmt.Println("11111111111111111")
 		resultChan <- res
+		fmt.Println("2222222222222222222")
 		close(resultChan)
 	}
 
+	fmt.Println("@@@@@@@@@@@ wrappedTask start")
 	p.tasks <- wrappedTask
+	fmt.Println("@@@@@@@@@@@ wrappedTask end")
 	p.wg.Add(1)
 
 	return &ft{
