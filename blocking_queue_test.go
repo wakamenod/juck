@@ -6,7 +6,7 @@ import (
 )
 
 func TestBlockingQueue(t *testing.T) {
-	bq := NewBlockingQueue()
+	bq := NewBlockingQueue[int]()
 	var wg sync.WaitGroup
 
 	// Consumer: Takes items from the queue
