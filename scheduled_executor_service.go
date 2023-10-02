@@ -6,43 +6,64 @@ import (
 	"github.com/wakamenod/juck/timeunit"
 )
 
-type ScheduledTask struct {
-	Task      func() any
-	ExecuteAt time.Time
-}
-
 type ScheduledExecutorService struct {
 	ExecutorService
-	scheduledTasks chan ScheduledTask
+	cacnelChannel chan any
 }
 
 func NewScheduledThreadPool(maxGoroutines int) *ScheduledExecutorService {
-	p := &ScheduledExecutorService{
+	return &ScheduledExecutorService{
 		ExecutorService: newThreadPoolExecutor(maxGoroutines),
-		scheduledTasks:  make(chan ScheduledTask),
+		cacnelChannel:   make(chan any),
 	}
-
-	go p.scheduleWorker()
-	return p
 }
 
-func NewSingleScheduledExecutor() ExecutorService {
+func NewSingleScheduledExecutor() *ScheduledExecutorService {
 	return NewScheduledThreadPool(1)
 }
 
-func (p *ScheduledExecutorService) scheduleWorker() {
-	for st := range p.scheduledTasks {
-		go func(st ScheduledTask) {
-			delay := time.Until(st.ExecuteAt)
-			time.Sleep(delay)
-			p.submit(st.Task)
-		}(st)
-	}
+func (p *ScheduledExecutorService) Shutdown() {
+	close(p.cacnelChannel)
+	p.ExecutorService.Shutdown()
 }
 
 func (p *ScheduledExecutorService) ScheduleWithDelay(task func(), delay int64, unit timeunit.TimeUnit) {
-	p.scheduledTasks <- ScheduledTask{
-		Task:      func() any { task(); return nil },
-		ExecuteAt: time.Now().Add(unit.MultiplyWithInt(delay)),
-	}
+	go func() {
+		delay := time.Until(time.Now().Add(unit.MultiplyWithInt(delay)))
+		time.Sleep(delay)
+		// nolint
+		p.SubmitAwait(task)
+	}()
+}
+
+func (p *ScheduledExecutorService) ScheduleAtFixedRate(task func(), initialDelay, period int64, unit timeunit.TimeUnit) {
+	go func() {
+		doneInitial := make(chan bool)
+
+		// Initial delay
+		<-time.After(unit.MultiplyWithInt(initialDelay))
+		go func() {
+			f := p.submit(func() any {
+				task()
+				close(doneInitial)
+				return nil
+			})
+			<-f.result
+		}()
+
+		// Setup ticker after initial delay
+		ticker := time.NewTicker(unit.MultiplyWithInt(period))
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				<-doneInitial
+				// nolint
+				p.SubmitAwait(task)
+			case <-p.cacnelChannel:
+				return
+			}
+		}
+	}()
 }

@@ -1,10 +1,13 @@
 package juck
 
-import "sync"
+import (
+	"sync"
+)
 
 type ExecutorService interface {
 	Shutdown()
 	Submit(task func()) *Future[any]
+	SubmitAwait(task func()) (any, error)
 	SubmitAny(task func() any) *Future[any]
 	SubmitString(task func() string) *Future[string]
 	SubmitInt(task func() int) *Future[int]
@@ -15,13 +18,15 @@ type ExecutorService interface {
 }
 
 type ThreadPoolExecutor struct {
-	tasks chan func()
-	wg    sync.WaitGroup
+	taskQueue *BlockingQueue[func()]
+	wg        sync.WaitGroup
+	closeCh   chan any
 }
 
 func newThreadPoolExecutor(maxGoroutines int) ExecutorService {
 	p := &ThreadPoolExecutor{
-		tasks: make(chan func()),
+		taskQueue: NewBlockingQueue[func()](),
+		closeCh:   make(chan any),
 	}
 
 	for i := 0; i < maxGoroutines; i++ {
@@ -32,11 +37,37 @@ func newThreadPoolExecutor(maxGoroutines int) ExecutorService {
 }
 
 func (p *ThreadPoolExecutor) worker() {
-	for task := range p.tasks {
+	for {
+		select {
+		case <-p.closeCh:
+			return
+		default:
+		}
+		// TODO let closeCh interrupt the wait?
+		// in that case maybe we need take with time e.g TakeWithTimeout
+		task := p.taskQueue.Take()
 		task()
 		p.wg.Done()
 	}
 }
+
+// func (bq *BlockingQueue[T]) TakeWithTimeout(timeout time.Duration) (T, bool) {
+// 	bq.mu.Lock()
+// 	defer bq.mu.Unlock()
+
+// 	expireTime := time.Now().Add(timeout)
+// 	for len(bq.queue) == 0 {
+// 		remainingTime := time.Until(expireTime)
+// 		if remainingTime <= 0 {
+// 			return zeroValueOf(T), false
+// 		}
+// 		bq.cond.WaitTimeout(remainingTime)
+// 	}
+
+// 	item := bq.queue[0]
+// 	bq.queue = bq.queue[1:]
+// 	return item, true
+// }
 
 func (p *ThreadPoolExecutor) submit(task func() any) *ft {
 	resultChan := make(chan any)
@@ -46,12 +77,29 @@ func (p *ThreadPoolExecutor) submit(task func() any) *ft {
 		close(resultChan)
 	}
 
-	p.tasks <- wrappedTask
 	p.wg.Add(1)
+	p.taskQueue.Put(wrappedTask)
 
 	return &ft{
 		result: resultChan,
 	}
+}
+
+// func (p *ThreadPoolExecutor) SubmitAsync(task func() any) {
+// 	go func() {
+// 		f := p.submit(func() any {
+// 			task()
+// 			return nil
+// 		})
+// 		<-f.result
+// 	}()
+// }
+
+func (p *ThreadPoolExecutor) SubmitAwait(task func()) (any, error) {
+	f := p.Submit(func() {
+		task()
+	})
+	return f.Await()
 }
 
 func NewFixedThreadPool(nThreads int) ExecutorService {
@@ -98,5 +146,5 @@ func (p *ThreadPoolExecutor) SubmitWithAny(task func(), result any) *Future[any]
 }
 
 func (p *ThreadPoolExecutor) Shutdown() {
-	close(p.tasks)
+	close(p.closeCh)
 }
